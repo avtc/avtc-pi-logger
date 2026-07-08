@@ -1,0 +1,49 @@
+{
+  "name": "avtc-pi-logger",
+  "version": "1.0.0",
+  "description": "File-based logging library for pi extensions — per-extension date-partitioned logs under ~/.pi/logs/{name}/ with rotation",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-package"
+  ],
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "files": [
+    "index.ts",
+    "src/",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "lint": "biome check .",
+    "lint:optional-params": "node scripts/no-optional-params.cjs src/ tests/",
+    "lint:bare-literals": "node scripts/no-bare-literals.cjs src/ index.ts",
+    "lint:design-refs": "node scripts/no-design-refs.cjs src/ index.ts README.md",
+    "lint:bundled-imports": "node scripts/no-bundled-extension-imports.cjs src/ index.ts",
+    "knip": "knip --production",
+    "typecheck": "tsc --noEmit --incremental --tsBuildInfoFile node_modules/.cache/tsc.tsbuildinfo",
+    "test:unit": "node scripts/test-low-priority.cjs vitest run",
+    "test:watch": "node scripts/test-low-priority.cjs vitest",
+    "test": "node scripts/test-low-priority.cjs \"node scripts/run-parallel.cjs \"npm run lint:optional-params :: npm run lint:bare-literals :: npm run lint:design-refs :: npm run lint:bundled-imports :: npm run lint:as-never :: npm run lint :: npm run typecheck :: npm run knip :: npm run dupes\" && vitest run\"",
+    "dupes": "jscpd src/ --exit-code --threshold 0.01",
+    "lint:as-never": "node scripts/no-as-never.cjs src/ tests/ index.ts"
+  },
+  "author": "avtc <tarasenkov@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/avtc/avtc-pi-logger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/avtc/avtc-pi-logger/issues"
+  },
+  "homepage": "https://github.com/avtc/avtc-pi-logger",
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.0",
+    "@types/node": "^25.9.3",
+    "jscpd": "^5.0.10",
+    "knip": "^6.17.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}
