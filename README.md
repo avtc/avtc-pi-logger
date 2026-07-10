@@ -1,6 +1,6 @@
 # avtc-pi-logger
 
-File-based logging **library** for pi extensions — per-extension, date-partitioned logs under `~/.pi/logs/{name}/` with size roll-over and age-based retention.
+File-based logging library for pi extensions — date-partitioned with rotation.
 
 ## Features
 

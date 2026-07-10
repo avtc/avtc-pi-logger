@@ -1,7 +1,7 @@
 {
   "name": "avtc-pi-logger",
-  "version": "1.0.0",
-  "description": "File-based logging library for pi extensions — per-extension date-partitioned logs under ~/.pi/logs/{name}/ with rotation",
+  "version": "1.0.2",
+  "description": "File-based logging library for pi extensions — date-partitioned with rotation.",
   "type": "module",
   "license": "MIT",
   "keywords": [
