@@ -75,7 +75,11 @@ Writes land at `~/.pi/logs/my-extension/2026-06-20.log` as:
 
 Nested children compose into a dot-path scope (`log.child("agents").child("discovery")` → `[agents.discovery]`).
 
-> Developed with [Z.ai](https://z.ai/subscribe?ic=N5IV4LLOOV) — get 10% off your subscription via this referral link.
+## Full suite
+
+Check out the full suite of related extensions, [avtc-pi](https://github.com/avtc/avtc-pi) — deterministic feature development, subagent delegation, working-memory, behavioral learning, parallel-work guardrails, durable decisions, notifications, and more.
+
+Developed with [Z.ai](https://z.ai/subscribe?ic=N5IV4LLOOV) — get 10% off your subscription via this referral link.
 
 ## License
 
