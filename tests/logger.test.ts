@@ -71,7 +71,7 @@ describe("createLogger", () => {
     const NL = String.fromCharCode(10); // newline
     const TAB = String.fromCharCode(9); // tab
     const NUL = String.fromCharCode(0); // NUL
-    log.info("before" + NL + "injected [ERROR] fake line" + TAB + "after" + NUL + "end");
+    log.info(`before${NL}injected [ERROR] fake line${TAB}after${NUL}end`);
 
     const contents = readFileSync(path.join(base, "x", "2026-06-20.log"), "utf-8");
     // Exactly ONE line was written (one trailing newline).

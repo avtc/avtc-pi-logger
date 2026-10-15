@@ -22,10 +22,12 @@
     "lint:design-refs": "node scripts/no-design-refs.cjs src/ index.ts README.md",
     "lint:bundled-imports": "node scripts/no-bundled-extension-imports.cjs src/ index.ts",
     "knip": "knip --production",
+    "typecheck:claude": "tsc -p claude/tsconfig.json",
+    "build:claude": "tsc -p claude/tsconfig.build.json && biome check --write claude/dist",
     "typecheck": "tsc --noEmit --incremental --tsBuildInfoFile node_modules/.cache/tsc.tsbuildinfo",
     "test:unit": "node scripts/test-low-priority.cjs vitest run",
     "test:watch": "node scripts/test-low-priority.cjs vitest",
-    "test": "node scripts/test-low-priority.cjs \"node scripts/run-parallel.cjs \"npm run lint:optional-params :: npm run lint:bare-literals :: npm run lint:design-refs :: npm run lint:bundled-imports :: npm run lint:as-never :: npm run lint :: npm run typecheck :: npm run knip :: npm run dupes\" && vitest run\"",
+    "test": "node scripts/test-low-priority.cjs \"node scripts/run-parallel.cjs \"npm run lint:optional-params :: npm run lint:bare-literals :: npm run lint:design-refs :: npm run lint:bundled-imports :: npm run lint:as-never :: npm run lint :: npm run typecheck :: npm run typecheck:claude :: npm run build:claude :: npm run knip :: npm run dupes\" && vitest run\"",
     "dupes": "jscpd src/ --exit-code --threshold 0.01",
     "lint:as-never": "node scripts/no-as-never.cjs src/ tests/ index.ts"
   },

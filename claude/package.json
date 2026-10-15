@@ -1,0 +1,29 @@
+{
+  "name": "avtc-claude-logger",
+  "version": "1.0.3",
+  "description": "File-based logging library for Claude mods — fixed total size limit, oldest log files overwritten.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "claude-mod-library"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "author": "avtc <tarasenkov@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/avtc/avtc-pi-logger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/avtc/avtc-pi-logger/issues"
+  },
+  "homepage": "https://github.com/avtc/avtc-pi-logger"
+}

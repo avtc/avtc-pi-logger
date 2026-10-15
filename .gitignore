@@ -3,3 +3,6 @@ dist/
 
 .worktrees/
 .pi
+
+# the claude package ships its built dist (consumed by mods via file: links)
+!claude/dist/

@@ -13,32 +13,6 @@ File-based logging library for pi extensions — date-partitioned with rotation.
 - **Directory override** — `PI_LOGGER_DIR` environment variable or explicit `baseDir` option relocates all logs
 - **Test seam** — inject a custom `clock` function for deterministic tests
 
-## API
-
-| Export | Description |
-|--------|-------------|
-| `createLogger(name, options \| null)` | Returns a `Logger { info, warn, error, debug, child }` writing to `<baseDir>/<name>/<date>.log` |
-| `Logger.child(scope)` | Derives a scoped child that tags lines `[scope]` and shares the root's sink (dot-paths when nested) |
-| `resolveLogPath(name, baseDir, date)` | Pure path resolver (`<baseDir>/<name>/<YYYY-MM-DD>.log`) |
-| `Logger`, `LogLevel`, `LoggerOptions` | Types |
-| `NO_ERROR` | Sentinel for `error(msg, NO_ERROR)` when no error object is available |
-
-### `LoggerOptions`
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `baseDir` | string | `~/.pi/logs` | Root directory for all extension logs |
-| `debug` | boolean | `false` | Enable debug-level logging |
-| `maxFileBytes` | number | `5_242_880` (5 MB) | Max log file size before roll-over |
-| `retentionDays` | number | `2` | Days to keep old log files (`0` = keep all) |
-| `maxMessageBytes` | number | `10_240` (10 KB) | Max message length before truncation |
-| `clock` | () → Date | `() => new Date()` | Test seam for deterministic timestamps |
-| `homeDir` | string | `os.homedir()` | Home directory for default base path resolution |
-
-### Log directory override
-
-Base-directory resolution precedence: an explicit `options.baseDir` > the `PI_LOGGER_DIR` environment variable > the default `~/.pi/logs`. Setting `PI_LOGGER_DIR` relocates all logs (for tests, point it at a temp dir; for users, a custom log root) with no code changes.
-
 ## Installation
 
 Add it as a dependency of your extension:
@@ -74,6 +48,36 @@ Writes land at `~/.pi/logs/my-extension/2026-06-20.log` as:
 ```
 
 Nested children compose into a dot-path scope (`log.child("agents").child("discovery")` → `[agents.discovery]`).
+
+## API
+
+| Export | Description |
+|--------|-------------|
+| `createLogger(name, options \| null)` | Returns a `Logger { info, warn, error, debug, child }` writing to `<baseDir>/<name>/<date>.log` |
+| `Logger.child(scope)` | Derives a scoped child that tags lines `[scope]` and shares the root's sink (dot-paths when nested) |
+| `resolveLogPath(name, baseDir, date)` | Pure path resolver (`<baseDir>/<name>/<YYYY-MM-DD>.log`) |
+| `Logger`, `LogLevel`, `LoggerOptions` | Types |
+| `NO_ERROR` | Sentinel for `error(msg, NO_ERROR)` when no error object is available |
+
+### `LoggerOptions`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `baseDir` | string | `~/.pi/logs` | Root directory for all extension logs |
+| `debug` | boolean | `false` | Enable debug-level logging |
+| `maxFileBytes` | number | `5_242_880` (5 MB) | Max log file size before roll-over |
+| `retentionDays` | number | `2` | Days to keep old log files (`0` = keep all) |
+| `maxMessageBytes` | number | `10_240` (10 KB) | Max message length before truncation |
+| `clock` | () → Date | `() => new Date()` | Test seam for deterministic timestamps |
+| `homeDir` | string | `os.homedir()` | Home directory for default base path resolution |
+
+### Log directory override
+
+Base-directory resolution precedence: an explicit `options.baseDir` > the `PI_LOGGER_DIR` environment variable > the default `~/.pi/logs`. Setting `PI_LOGGER_DIR` relocates all logs (for tests, point it at a temp dir; for users, a custom log root) with no code changes.
+
+## Claude Code port
+
+A Claude Code (mods) port of this library lives in [`claude/README.md`](claude/README.md).
 
 ## Full suite
 
