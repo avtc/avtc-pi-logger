@@ -18,4 +18,5 @@ Once approved, text can be applied directly during implementation. Any subsequen
 - use `npx vitest run` to run specific tests.
 - Update tests and documentation when behavior changes.
 - Follow existing prompts and code style.
+- **`claude/src` is a hand-written port, not a copy of `src/`** — change it directly. `claude/dist` is its build output: `npm run build:claude` regenerates it (runs inside `npm test`); never edit `dist` by hand.
 - **Source comments and product docs (README, CONFIGURATION) stay free of design-doc references and historical framing** — no §N, D27, R2-8, "Design ref", "has moved to"/"formerly"/"is now"/"no longer", or "(module.ts)" breadcrumbs. Design-doc and plan-section references belong in design docs and the `.featyard/` artifact docs (plans, research, reviews) that trace to them.
