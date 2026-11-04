@@ -114,6 +114,35 @@ describe("SlotRingWriter", () => {
     expect(text(adapter, 0)).toBe("old-old\n");
   });
 
+  test("a listing that fails because the log directory does not exist yet resolves the empty ring at slot 0 — the first batch lands and creates the ring", async () => {
+    // no directory means no files: the ring is provably empty, so slot 0 is
+    // its truth, not a blind default — and the write itself creates the
+    // directory (the host fs creates parents). Only a listing that fails
+    // with the directory PRESENT leaves the ring unknown.
+    const adapter = new MemoryAdapter();
+    let absent = true;
+    const realList = adapter.list.bind(adapter);
+    adapter.list = async (dir: string) => {
+      if (absent) {
+        absent = false;
+        throw new Error(`ENOENT: no such file or directory, scandir ${dir}`);
+      }
+      return realList(dir);
+    };
+    const w = makeWriter(adapter, { maxFileBytes: 100, slotCount: 2 });
+    await w.writeLine("first lines survive the cold start" + String.fromCharCode(10), clock());
+    await flush(w);
+    expect(text(adapter, 0)).toBe("first lines survive the cold start" + String.fromCharCode(10));
+    await w.writeLine("second batch lists the now-existing ring" + String.fromCharCode(10), clock());
+    await flush(w);
+    expect(text(adapter, 0)).toBe(
+      "first lines survive the cold start" +
+        String.fromCharCode(10) +
+        "second batch lists the now-existing ring" +
+        String.fromCharCode(10),
+    );
+  });
+
   test("a listing that fails at cold start is not cached as slot 0 (the retry resolves the real newest)", async () => {
     const adapter = new MemoryAdapter();
     // a previous process left slot 1 as the newest; the first flush cannot

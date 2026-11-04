@@ -106,9 +106,14 @@ export class SlotRingWriter {
     try {
       entries = await backend.list(`${baseDir}/${name}`);
       listed = true;
-    } catch {
-      // an empty ring and an unreadable directory are different states; only
-      // a successful listing may resolve to the default slot
+    } catch (err) {
+      // a MISSING directory is not an unknown ring: no directory means no
+      // files, so the ring is provably empty and slot 0 is its truth (the
+      // write itself creates the directory). Any other failure — the
+      // backend rejecting before the host wires it — leaves the ring state
+      // unknown and must resolve null, never a cached default
+      const detail = err instanceof Error ? err.message : String(err);
+      if (/ENOENT|no such file/i.test(detail)) listed = true;
     }
     if (!listed) return null;
     let best = null;
