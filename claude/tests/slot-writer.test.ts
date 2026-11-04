@@ -114,6 +114,30 @@ describe("SlotRingWriter", () => {
     expect(text(adapter, 0)).toBe("old-old\n");
   });
 
+  test("a listing that fails at cold start is not cached as slot 0 (the retry resolves the real newest)", async () => {
+    const adapter = new MemoryAdapter();
+    // a previous process left slot 1 as the newest; the first flush cannot
+    // list yet (the backend rejects before the host wires it)
+    adapter.files.set("logs/owl/0.log", { text: "full-old-zombie\n", mtimeMs: 1 });
+    adapter.files.set("logs/owl/1.log", { text: "newest\n", mtimeMs: 5 });
+    let listFailures = 1;
+    const realList = adapter.list.bind(adapter);
+    adapter.list = async (dir: string) => {
+      if (listFailures > 0) {
+        listFailures -= 1;
+        throw new Error("backend not initialized");
+      }
+      return realList(dir);
+    };
+    const w = makeWriter(adapter, { maxFileBytes: 20, slotCount: 2 });
+    await w.writeLine("dropped-with-the-first-batch\n", clock());
+    await flush(w); // the listing failed: the batch is lost, the slot stays unresolved
+    await w.writeLine("kept\n", clock());
+    await flush(w); // the retry lists fine and lands on the mtime-newest slot
+    expect(text(adapter, 1)).toBe("newest\nkept\n");
+    expect(text(adapter, 0)).toBe("full-old-zombie\n");
+  });
+
   test("write failures never throw; the failed batch is lost, later lines land", async () => {
     const adapter = new MemoryAdapter();
     adapter.failures = 1;

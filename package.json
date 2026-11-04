@@ -1,6 +1,6 @@
 {
   "name": "avtc-pi-logger",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "File-based logging library for pi extensions — date-partitioned with rotation.",
   "type": "module",
   "license": "MIT",

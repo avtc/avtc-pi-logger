@@ -52,7 +52,8 @@ export declare class SlotRingWriter {
   /**
    * Cold start: find the mtime-newest ring file and resume appending to it;
    * a ring with no files starts at slot 0. Sizes come from listing the
-   * directory (the adapter carries mtimeMs per entry).
+   * directory (the adapter carries mtimeMs per entry). Returns null when the
+   * listing itself fails — the caller must NOT cache a default in that case.
    */
   private resolveCurrentSlot;
   private warnOnce;

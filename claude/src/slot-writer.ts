@@ -95,7 +95,16 @@ export class SlotRingWriter {
   private async writeBatch(batch: PendingLine[]): Promise<void> {
     const { backend, baseDir, name, slotCount, maxFileBytes } = this.opts;
     if (this.currentSlot === null) {
-      this.currentSlot = await this.resolveCurrentSlot();
+      const resolved = await this.resolveCurrentSlot();
+      if (resolved === null) {
+        // the listing is unavailable (the backend rejects before the host
+        // wires it): drop this batch per the best-effort contract and keep
+        // the slot UNRESOLVED — caching a default here would pin the ring
+        // to slot 0 for the process lifetime and wipe the newest slot on
+        // every advance
+        throw new Error("slot ring: listing unavailable, resolution deferred");
+      }
+      this.currentSlot = resolved;
     }
     let slot = this.currentSlot;
     let path = `${baseDir}/${name}/${slotFileName(slot)}`;
@@ -128,16 +137,21 @@ export class SlotRingWriter {
   /**
    * Cold start: find the mtime-newest ring file and resume appending to it;
    * a ring with no files starts at slot 0. Sizes come from listing the
-   * directory (the adapter carries mtimeMs per entry).
+   * directory (the adapter carries mtimeMs per entry). Returns null when the
+   * listing itself fails — the caller must NOT cache a default in that case.
    */
-  private async resolveCurrentSlot(): Promise<number> {
+  private async resolveCurrentSlot(): Promise<number | null> {
     const { backend, baseDir, name, slotCount } = this.opts;
     let entries: ReadonlyArray<{ name: string; mtimeMs: number }> = [];
+    let listed = false;
     try {
       entries = await backend.list(`${baseDir}/${name}`);
+      listed = true;
     } catch {
-      entries = [];
+      // an empty ring and an unreadable directory are different states; only
+      // a successful listing may resolve to the default slot
     }
+    if (!listed) return null;
     let best: { slot: number; mtimeMs: number } | null = null;
     for (const entry of entries) {
       const m = entry.name.match(/^(\d+)\.log$/);
