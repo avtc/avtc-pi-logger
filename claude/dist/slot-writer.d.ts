@@ -21,6 +21,14 @@ export interface SlotRingWriterOptions {
   slotCount: number;
   /** Per-slot byte cap; the ring advances when the current slot exceeds it. */
   maxFileBytes: number;
+  /** Agglomeration window (ms): lines queue and ONE whole-file write lands
+   *  per window instead of one per quiet line (0 = write on every line).
+   *  Collapses to immediate when `schedule` is absent — the hooks sandbox
+   *  has no host clocks, so the timer authority is injected. */
+  bufferMs: number;
+  /** Arm the window timer; returns a cancel (or null when it cannot cancel).
+   *  A stable closure: the host may install its $.clock seam later. */
+  schedule: ((ms: number, fn: () => void) => (() => void) | null) | null;
   /** The fs adapter (the host's $.fs-backed adapter, or a test double). */
   backend: LogFsAdapter;
 }
@@ -42,6 +50,10 @@ export declare class SlotRingWriter {
   /** The last listing failure's detail — the deferred-resolution error
    *  carries it so the in-ring acknowledgment can name the REAL cause. */
   private resolutionDetail;
+  /** The window's armed timer (one at a time — later lines just queue). */
+  private armed;
+  /** The retained last-slot state (see RetainedSlot). */
+  private retained;
   /** Emit at most one warning per writer instance. */
   private warned;
   constructor(opts: SlotRingWriterOptions);
@@ -53,10 +65,28 @@ export declare class SlotRingWriter {
   writeLine(line: string, now: Date): void;
   /** Start the flush chain when idle; a finished chain with leftovers restarts itself. */
   private scheduleFlush;
-  /** Wait for all queued lines to be written (tests + drain points). */
+  /** Wait for all queued lines to be on disk (tests + drain points) — a
+   *  drain never waits out an armed window. */
   flush(): Promise<void>;
   private runFlush;
   private writeBatch;
+  /** Whether the stat authority is usable: an adapter without stat, or a
+   *  stat that THREW (identity must never rest on a broken authority),
+   *  disables retention — every batch then reads, the pre-guard behavior.
+   *  Set in the constructor (field initializers run before this.opts). */
+  private statOk;
+  /** One identity read; null = file absent (or the authority is out). */
+  private statOf;
+  /** The slot's raw text with the retained fast-path: while the identity
+   *  (mtime + size) still matches what a bracketed read observed, the read
+   *  is skipped — a whole-file read is the per-flush cost and an unchanged
+   *  slot needs no freshness. A foreign writer's change moves the identity
+   *  → a fresh read merges its lines instead of clobbering them. */
+  private readRetained;
+  /** Remember the bytes just written as the slot's retained state (the
+   *  writer knows the exact content — no read to validate identity twice; a
+   *  foreign write in the same instant degrades to the accepted RMW class). */
+  private retain;
   /** Read a file's text, or "" when missing. */
   private readExisting;
   /**

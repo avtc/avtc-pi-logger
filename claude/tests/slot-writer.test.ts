@@ -2,15 +2,19 @@
 // SPDX-FileCopyrightText: 2026 avtc <tarasenkov@gmail.com>
 
 import { describe, expect, test } from "vitest";
-import { SlotRingWriter } from "../src/slot-writer.js";
+import { SlotRingWriter, type SlotRingWriterOptions } from "../src/slot-writer.js";
 
 /** In-memory adapter: whole-file writes, listing with metadata (the $.fs shapes). */
 class MemoryAdapter {
   files = new Map<string, { text: string; mtimeMs: number }>();
   failures = 0;
   listCalls = 0;
+  readCalls = 0;
+  writeCalls = 0;
+  private tick = 1000;
 
   async read(path: string): Promise<string> {
+    this.readCalls += 1;
     const f = this.files.get(path);
     if (f === undefined) throw new Error(`ENOENT: ${path}`);
     return f.text;
@@ -21,7 +25,20 @@ class MemoryAdapter {
       this.failures -= 1;
       throw new Error(`EWRITE: ${path}`);
     }
-    this.files.set(path, { text, mtimeMs: this.files.size + 1 });
+    this.writeCalls += 1;
+    this.tick += 1;
+    this.files.set(path, { text, mtimeMs: this.tick });
+  }
+
+  async stat(path: string): Promise<{ mtimeMs: number; size: number } | null> {
+    const f = this.files.get(path);
+    return f === undefined ? null : { mtimeMs: f.mtimeMs, size: f.text.length };
+  }
+
+  /** Another writer landing on the same slot (identity moves under us). */
+  foreignWrite(path: string, text: string): void {
+    this.tick += 1;
+    this.files.set(path, { text, mtimeMs: this.tick });
   }
 
   async list(dir: string) {
@@ -36,15 +53,26 @@ class MemoryAdapter {
 const FIXED = new Date("2026-06-20T13:37:45.123Z");
 const clock = (): Date => FIXED;
 
-function makeWriter(adapter: MemoryAdapter, opts?: { slotCount?: number; maxFileBytes?: number }) {
+function makeWriter(
+  adapter: MemoryAdapter,
+  opts?: { slotCount?: number; maxFileBytes?: number; bufferMs?: number; schedule?: SlotRingWriterOptions["schedule"] },
+) {
   return new SlotRingWriter({
     baseDir: "logs",
     name: "owl",
     slotCount: opts?.slotCount ?? 2,
     maxFileBytes: opts?.maxFileBytes ?? 100,
+    bufferMs: opts?.bufferMs ?? 0,
+    schedule: opts?.schedule ?? null,
     backend: adapter,
   });
 }
+
+/** A real-timer schedule seam (the host uses $.clock.after). */
+const realSchedule = (ms: number, fn: () => void): (() => void) | null => {
+  const t = setTimeout(fn, ms);
+  return () => clearTimeout(t);
+};
 
 function text(adapter: MemoryAdapter, slot: number): string | null {
   const f = adapter.files.get(`logs/owl/${slot}.log`);
@@ -226,5 +254,53 @@ describe("SlotRingWriter", () => {
     await Promise.all([w.writeLine("p1\n", clock()), w.writeLine("p2\n", clock()), w.writeLine("p3\n", clock())]);
     await flush(w);
     expect(text(adapter, 0)).toBe("p1\np2\np3\n");
+  });
+
+  test("a window agglomerates: lines queue until it fires — one write for the burst", async () => {
+    const adapter = new MemoryAdapter();
+    const w = makeWriter(adapter, { bufferMs: 80, schedule: realSchedule });
+    await w.writeLine("one\n", clock());
+    await w.writeLine("two\n", clock());
+    expect(adapter.writeCalls).toBe(0); // still inside the window — nothing but the timer is armed
+    await new Promise((resolve) => setTimeout(resolve, 220));
+    expect(adapter.writeCalls).toBe(1);
+    expect(text(adapter, 0)).toBe("one\ntwo\n");
+  });
+
+  test("flush() drains mid-window — drain points never wait for the timer", async () => {
+    const adapter = new MemoryAdapter();
+    const w = makeWriter(adapter, { bufferMs: 400, schedule: realSchedule });
+    await w.writeLine("now\n", clock());
+    await flush(w);
+    expect(text(adapter, 0)).toBe("now\n");
+    expect(adapter.writeCalls).toBe(1);
+    // the leftover timer fires against an empty queue — a no-op, no double write
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(adapter.writeCalls).toBe(1);
+  });
+
+  test("no timer authority (schedule null) collapses the window to immediate", async () => {
+    const adapter = new MemoryAdapter();
+    const w = makeWriter(adapter, { bufferMs: 5000, schedule: null });
+    await w.writeLine("immediate\n", clock());
+    await new Promise((resolve) => setTimeout(resolve, 40)); // no flush() call — the chain self-started
+    expect(text(adapter, 0)).toBe("immediate\n");
+  });
+
+  test("an unchanged file skips the read — the identity guard (stat) carries the freshness", async () => {
+    const adapter = new MemoryAdapter();
+    const w = makeWriter(adapter);
+    await w.writeLine("a\n", clock());
+    await flush(w); // first write: miss + read(ENOENT) + write + identity
+    const afterFirst = adapter.readCalls;
+    await w.writeLine("b\n", clock());
+    await flush(w); // identity unchanged (nobody wrote) — no read, the write proceeds from memory
+    expect(adapter.readCalls).toBe(afterFirst);
+    expect(text(adapter, 0)).toBe("a\nb\n");
+    adapter.foreignWrite("logs/owl/0.log", "a\nb\nforeign\n"); // another session appends on the same slot
+    await w.writeLine("c\n", clock());
+    await flush(w); // identity moved — a fresh read merges the foreign lines instead of clobbering them
+    expect(adapter.readCalls).toBe(afterFirst + 1);
+    expect(text(adapter, 0)).toBe("a\nb\nforeign\nc\n");
   });
 });

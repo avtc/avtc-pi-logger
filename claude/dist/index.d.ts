@@ -14,6 +14,7 @@ export { createLogger, flushLogger } from "./logger.js";
 export type { SlotRingWriterOptions } from "./slot-writer.js";
 export { SlotRingWriter } from "./slot-writer.js";
 export {
+  DEFAULT_BUFFER_MS,
   DEFAULT_MAX_FILE_BYTES,
   DEFAULT_MAX_MESSAGE_BYTES,
   DEFAULT_SLOT_COUNT,
@@ -22,6 +23,7 @@ export {
   type LoggerOptions,
   type LogLevel,
   NO_ERROR,
+  type ScheduleFn,
   slotFileName,
   TRUNCATED_MARKER,
 } from "./types.js";

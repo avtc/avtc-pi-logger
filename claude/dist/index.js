@@ -4,6 +4,7 @@ export { getDefaultBackend, setDefaultBackend } from "./fs-adapter.js";
 export { createLogger, flushLogger } from "./logger.js";
 export { SlotRingWriter } from "./slot-writer.js";
 export {
+  DEFAULT_BUFFER_MS,
   DEFAULT_MAX_FILE_BYTES,
   DEFAULT_MAX_MESSAGE_BYTES,
   DEFAULT_SLOT_COUNT,

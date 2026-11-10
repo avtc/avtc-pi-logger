@@ -4,11 +4,14 @@
  * adapter once at session start, and every {@link createLogger} without an
  * explicit `backend`/`baseDir` uses it.
  */
-import type { LogFsAdapter } from "./types.js";
+import type { LogFsAdapter, ScheduleFn } from "./types.js";
 /** What the host installs: where logs land and what writes them. */
 export interface DefaultBackend {
   adapter: LogFsAdapter;
   baseDir: string;
+  /** The window timer for every logger over this backend (a stable closure
+   *  — the host may install its $.clock seam later than this install). */
+  schedule?: ScheduleFn;
 }
 /**
  * Install the process-wide default backend (idempotent; the host re-installs

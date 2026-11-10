@@ -5,6 +5,7 @@ import { formatError, formatTimestamp, sanitizeForLine, truncateMessage } from "
 import { getDefaultBackend } from "./fs-adapter.js";
 import { SlotRingWriter } from "./slot-writer.js";
 import {
+  DEFAULT_BUFFER_MS,
   DEFAULT_MAX_FILE_BYTES,
   DEFAULT_MAX_MESSAGE_BYTES,
   DEFAULT_SLOT_COUNT,
@@ -94,8 +95,10 @@ export function createLogger(name: string, options: LoggerOptions | null): Logge
   const slotCount = options?.slotCount ?? DEFAULT_SLOT_COUNT;
   const maxMessageBytes = options?.maxMessageBytes ?? DEFAULT_MAX_MESSAGE_BYTES;
   const clock = options?.clock ?? (() => new Date());
+  const bufferMs = options?.bufferMs ?? DEFAULT_BUFFER_MS;
+  const schedule = options?.schedule ?? fallback?.schedule ?? null;
 
-  const writer = new SlotRingWriter({ baseDir, name, slotCount, maxFileBytes, backend });
+  const writer = new SlotRingWriter({ baseDir, name, slotCount, maxFileBytes, bufferMs, schedule, backend });
   const ctx: EmitContext = { writer, clock, maxMessageBytes, debug };
   const logger = makeLogger(ctx, NO_SCOPE_TAG);
   writers.set(logger, writer);

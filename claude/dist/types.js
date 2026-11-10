@@ -8,6 +8,8 @@ export const DEFAULT_MAX_FILE_BYTES = 2 * 1024 * 1024;
 export const MAX_FILE_BYTES_CEILING = 4 * 1024 * 1024;
 /** Default slot count: 2 slots (4 MiB total bound at the default cap). */
 export const DEFAULT_SLOT_COUNT = 2;
+/** The agglomeration window: lines arriving inside it share one write. */
+export const DEFAULT_BUFFER_MS = 100;
 /** Default single-message cap: 10 KB. */
 export const DEFAULT_MAX_MESSAGE_BYTES = 10 * 1024;
 /** Marker appended when a message is truncated. */

@@ -49,7 +49,17 @@ export interface LogFsAdapter {
   write(path: string, text: string): Promise<void>;
   /** List a directory: `{ name, kind, size, mtimeMs }` per entry. */
   list(dir: string): Promise<ReadonlyArray<{ name: string; kind: string; size: number; mtimeMs: number }>>;
+  /** Identity of an existing file (`null` when absent). Optional: an
+   *  adapter without it disables the read-skip guard (every batch reads,
+   *  pre-guard behavior). A THROWING stat also disables it — freshness
+   *  never rests on a broken authority. */
+  stat?(path: string): Promise<{ mtimeMs: number; size: number } | null>;
 }
+
+/** The agglomeration-window timer authority (a capsule — the sandbox has no
+ *  host clock; the host passes its `$.clock.after` seam). Returns a cancel
+ *  (or null when it cannot cancel). */
+export type ScheduleFn = (ms: number, fn: () => void) => (() => void) | null;
 
 /**
  * Options for {@link createLogger}.
@@ -73,6 +83,15 @@ export interface LoggerOptions {
    * Default: 2.
    */
   slotCount?: number;
+  /**
+   * Agglomeration window (ms): queued lines land in ONE whole-file write per
+   * window instead of one per quiet line. Default: 100 — collapses to
+   * immediate when no timer authority is available (see {@link ScheduleFn}).
+   */
+  bufferMs?: number;
+  /** The timer authority for {@link bufferMs} (options first, else the
+   *  host-installed default backend's). */
+  schedule?: ScheduleFn;
   /** Hard cap on a single message's byte length. Default: 10 KB. */
   maxMessageBytes?: number;
   /** Inject a custom clock (testing / fixed time). Default: real wall clock. */
@@ -92,6 +111,8 @@ export const MAX_FILE_BYTES_CEILING = 4 * 1024 * 1024;
 
 /** Default slot count: 2 slots (4 MiB total bound at the default cap). */
 export const DEFAULT_SLOT_COUNT = 2;
+/** The agglomeration window: lines arriving inside it share one write. */
+export const DEFAULT_BUFFER_MS = 100;
 
 /** Default single-message cap: 10 KB. */
 export const DEFAULT_MAX_MESSAGE_BYTES = 10 * 1024;
