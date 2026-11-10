@@ -1,6 +1,6 @@
 {
   "name": "avtc-claude-logger",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "File-based logging library for Claude mods — fixed total size limit, oldest log files overwritten.",
   "type": "module",
   "license": "MIT",
