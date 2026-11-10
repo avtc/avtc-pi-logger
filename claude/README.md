@@ -6,10 +6,12 @@ File-based logging library for Claude mods — fixed total size limit, oldest lo
 
 - **Bounded slot ring** — fixed filenames `<slot>.log` under `<baseDir>/<name>/`; when a slot exceeds `maxFileBytes` the ring advances, past the last slot it wraps to the oldest
 - **Fixed total size** — capped at `slotCount × maxFileBytes` (default `2` slots × `2 MiB`); the oldest log files are overwritten
-- **Buffered writes** — records buffer in memory and flush as whole-file appends
+- **Windowed writes** — a 100ms window agglomerates records into whole-file writes (timer seam via `schedule`; write-on-every-line when absent)
+- **Identity-guarded reads** — the last writer's `(mtime, size)` skips the per-flush reread; a foreign writer's change forces a fresh read that merges instead of clobbering
+- **In-ring loss acknowledgment** — a failed batch is recorded on recovery as `[avtc-claude-logger] N line(s) previously lost: <reason>`
 - **Leveled records** — `info` / `warn` / `error(message, err)` / `debug` (suppressed unless enabled)
 - **Scoped child loggers** — `log.child("scope")` derives a child that tags lines with `[scope]`; nested children compose into dot-paths (`[agents.discovery]`)
-- **Best-effort I/O** — any failure is swallowed after a single console warning; logging never crashes the host
+- **Best-effort I/O** — any failure is swallowed (console when one exists) and acknowledged in-ring on recovery; logging never crashes the host
 - **Message truncation** — messages over `maxMessageBytes` (default 10 KB) are truncated with a marker
 - **Single-line output** — embedded newlines and control characters collapse to spaces, so a message can never forge extra log lines
 - **Test seam** — inject a custom `clock` function for deterministic tests; an in-memory adapter for assertions
@@ -34,12 +36,29 @@ setDefaultBackend({
     read: (path) => $.fs.read(path),
     write: (path, text) => $.fs.write(path, text),
     list: (dir) => $.fs.list(dir),
+    // the read-skip guard's identity: null for an absent file; any other
+    // error passes through — the library then disables the guard entirely
+    stat: async (path) => {
+      try {
+        const s = await $.fs.stat(path);
+        return { mtimeMs: s.mtimeMs, size: s.size };
+      } catch (err) {
+        if (/ENOENT|no such file/i.test(String(err))) return null;
+        throw err;
+      }
+    },
   },
   baseDir: `${configDir}/logs`,
+  // the window's timer — the sandbox has no host clock; an empty-queue
+  // tick is a no-op, so an uncancelled one-shot is fine
+  schedule: (ms, fn) => {
+    $.clock.after(ms, fn);
+    return null;
+  },
 });
 ```
 
-`$.fs` itself can't be handed over — the platform rejects `$` and its nouns as values across a call boundary — so each method is spelled as a closure.
+`stat` and `schedule` are both optional: without them the ring behaves exactly as before (every flush reads; immediate writes). `$.fs` itself can't be handed over — the platform rejects `$` and its nouns as values across a call boundary — so each method is spelled as a closure.
 
 ```ts
 const log = createLogger("my-extension");
@@ -54,7 +73,7 @@ const agentsLog = log.child("agents");
 agentsLog.info("discovered agent");
 ```
 
-`createLogger` throws until a backend is installed or `baseDir`/`backend` is passed — wiring bugs surface at creation. Multiple processes writing to the same ring may lose lines when flushes interleave.
+`createLogger` throws until a backend is installed or `baseDir`/`backend` is passed — wiring bugs surface at creation. Parallel sessions can still lose lines on interleaved whole-file writes (no lock exists on the mods fs); the identity guard prevents read-clobber, and every loss is acknowledged in-ring.
 
 Writes land at `~/.claude/logs/<name>/<slot>.log` as:
 
@@ -73,13 +92,13 @@ Nested children compose into a dot-path scope (`log.child("agents").child("disco
 |--------|-------------|
 | `createLogger(name, options \| null)` | Returns a `Logger { info, warn, error, debug, child }` writing to `<baseDir>/<name>/<slot>.log` |
 | `Logger.child(scope)` | Derives a scoped child that tags lines `[scope]` and shares the root's ring (dot-paths when nested) |
-| `setDefaultBackend({ adapter, baseDir })` | Host-side default backend installation |
+| `setDefaultBackend({ adapter, baseDir, schedule })` | Host-side default backend installation (`schedule` optional — the window's timer) |
 | `getDefaultBackend()` | Reads the installed default (if any) |
 | `flushLogger(logger)` | Await a logger's queued lines (drain points, tests) |
-| `SlotRingWriter` | The ring writer, usable directly |
+| `SlotRingWriter` | The ring writer, usable directly (constructor requires `bufferMs` + `schedule`; `0`/`null` = legacy immediate behavior) |
 | `slotFileName(slot)` | Pure slot-file helper (`<slot>.log`) |
-| Types | `Logger`, `LoggerOptions`, `LogLevel`, `LogFsAdapter` |
-| Constants | `DEFAULT_MAX_FILE_BYTES`, `DEFAULT_SLOT_COUNT`, `DEFAULT_MAX_MESSAGE_BYTES`, `TRUNCATED_MARKER`, `NO_ERROR` |
+| Types | `Logger`, `LoggerOptions`, `LogLevel`, `LogFsAdapter`, `ScheduleFn` |
+| Constants | `DEFAULT_MAX_FILE_BYTES`, `DEFAULT_SLOT_COUNT`, `DEFAULT_MAX_MESSAGE_BYTES`, `DEFAULT_BUFFER_MS`, `TRUNCATED_MARKER`, `NO_ERROR` |
 
 ### `LoggerOptions`
 
@@ -90,6 +109,8 @@ Nested children compose into a dot-path scope (`log.child("agents").child("disco
 | `maxFileBytes` | number | `2097152` (2 MiB) | Max slot file size before the ring advances (hard ceiling: the platform fs rejects reads over 4 MiB) |
 | `slotCount` | number | `2` | Number of slot files in the ring |
 | `maxMessageBytes` | number | `10240` (10 KB) | Max message length before truncation |
+| `bufferMs` | number | `100` | Agglomeration window (ms); `0` = write per line |
+| `schedule` | `ScheduleFn` | backend's | Window timer; collapses to immediate when absent |
 | `clock` | () → Date | `() => new Date()` | Test seam for deterministic timestamps |
 | `backend` | backend | — | Explicit backend (overrides the installed default) |
 
