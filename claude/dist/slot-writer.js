@@ -9,6 +9,16 @@ export class SlotRingWriter {
   flushing = null;
   /** Cached current slot index; null until resolved by a flush. */
   currentSlot = null;
+  /** Lines dropped by failed batches and the last failure's reason. The
+   *  console has no sink in a hooks sandbox, so an in-memory counter would
+   *  make every loss invisible — the next successful write carries the
+   *  acknowledgment INTO the ring, where the file log is the only place
+   *  failures can be seen. */
+  droppedLines = 0;
+  droppedReason = "";
+  /** The last listing failure's detail — the deferred-resolution error
+   *  carries it so the in-ring acknowledgment can name the REAL cause. */
+  resolutionDetail = null;
   /** Emit at most one warning per writer instance. */
   warned = false;
   constructor(opts) {
@@ -48,8 +58,15 @@ export class SlotRingWriter {
       try {
         await this.writeBatch(batch);
       } catch (err) {
+        this.droppedLines += batch.length;
+        this.droppedReason = detailOf(err);
+        // the failure can be the wrap write — the cached slot is then wrong
+        // and would re-wrap into the same failing write forever: invalidate
+        // so the next batch re-resolves mtime-newest and retries
+        this.currentSlot = null;
         this.warnOnce(err);
-        // lines lost by design (best-effort); keep the chain alive
+        // lines lost by design (best-effort); the chain stays alive and the
+        // next successful write acknowledges the loss in-ring
       }
     }
   }
@@ -63,13 +80,18 @@ export class SlotRingWriter {
         // the slot UNRESOLVED — caching a default here would pin the ring
         // to slot 0 for the process lifetime and wipe the newest slot on
         // every advance
-        throw new Error("slot ring: listing unavailable, resolution deferred");
+        const reason = this.resolutionDetail === null ? "unwired backend" : this.resolutionDetail;
+        throw new Error(`slot ring: listing unavailable (${reason}), resolution deferred`);
       }
       this.currentSlot = resolved;
     }
     let slot = this.currentSlot;
     let path = `${baseDir}/${name}/${slotFileName(slot)}`;
     let content = await this.readExisting(path);
+    const acknowledging = this.droppedLines > 0;
+    if (acknowledging) {
+      content += `[avtc-claude-logger] ${String(this.droppedLines)} line(s) previously lost: ${this.droppedReason}\n`;
+    }
     for (const line of batch) {
       const lineBytes = byteLength(line.text);
       if (content.length > 0 && byteLength(content) + lineBytes > maxFileBytes) {
@@ -84,6 +106,11 @@ export class SlotRingWriter {
     }
     await backend.write(path, content);
     this.currentSlot = slot;
+    if (acknowledging) {
+      // the acknowledgment landed — the loss is recorded in-ring
+      this.droppedLines = 0;
+      this.droppedReason = "";
+    }
   }
   /** Read a file's text, or "" when missing. */
   async readExisting(path) {
@@ -101,6 +128,7 @@ export class SlotRingWriter {
    */
   async resolveCurrentSlot() {
     const { backend, baseDir, name, slotCount } = this.opts;
+    this.resolutionDetail = null;
     let entries = [];
     let listed = false;
     try {
@@ -113,6 +141,7 @@ export class SlotRingWriter {
       // backend rejecting before the host wires it — leaves the ring state
       // unknown and must resolve null, never a cached default
       const detail = err instanceof Error ? err.message : String(err);
+      this.resolutionDetail = detail;
       if (/ENOENT|no such file/i.test(detail)) listed = true;
     }
     if (!listed) return null;
@@ -163,4 +192,8 @@ function warnSink(message) {
   } catch {
     // no console — give up silently (best-effort by contract)
   }
+}
+/** The dropped-batch reason recorded for the in-ring acknowledgment. */
+function detailOf(err) {
+  return err instanceof Error ? err.message : String(err);
 }

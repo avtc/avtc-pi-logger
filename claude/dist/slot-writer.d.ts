@@ -32,6 +32,16 @@ export declare class SlotRingWriter {
   private flushing;
   /** Cached current slot index; null until resolved by a flush. */
   private currentSlot;
+  /** Lines dropped by failed batches and the last failure's reason. The
+   *  console has no sink in a hooks sandbox, so an in-memory counter would
+   *  make every loss invisible — the next successful write carries the
+   *  acknowledgment INTO the ring, where the file log is the only place
+   *  failures can be seen. */
+  private droppedLines;
+  private droppedReason;
+  /** The last listing failure's detail — the deferred-resolution error
+   *  carries it so the in-ring acknowledgment can name the REAL cause. */
+  private resolutionDetail;
   /** Emit at most one warning per writer instance. */
   private warned;
   constructor(opts: SlotRingWriterOptions);

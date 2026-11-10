@@ -8,6 +8,7 @@ import { SlotRingWriter } from "../src/slot-writer.js";
 class MemoryAdapter {
   files = new Map<string, { text: string; mtimeMs: number }>();
   failures = 0;
+  listCalls = 0;
 
   async read(path: string): Promise<string> {
     const f = this.files.get(path);
@@ -24,6 +25,7 @@ class MemoryAdapter {
   }
 
   async list(dir: string) {
+    this.listCalls += 1;
     const prefix = `${dir}/`;
     return [...this.files.entries()]
       .filter(([p]) => p.startsWith(prefix))
@@ -158,16 +160,20 @@ describe("SlotRingWriter", () => {
       }
       return realList(dir);
     };
-    const w = makeWriter(adapter, { maxFileBytes: 20, slotCount: 2 });
+    const w = makeWriter(adapter, { maxFileBytes: 500, slotCount: 2 }); // room for the ack line
     await w.writeLine("dropped-with-the-first-batch\n", clock());
     await flush(w); // the listing failed: the batch is lost, the slot stays unresolved
     await w.writeLine("kept\n", clock());
     await flush(w); // the retry lists fine and lands on the mtime-newest slot
-    expect(text(adapter, 1)).toBe("newest\nkept\n");
+    const onDisk = text(adapter, 1) ?? "";
+    expect(onDisk).toContain("newest\n");
+    expect(onDisk).toContain("kept\n");
+    // the silent drop is acknowledged in-ring on recovery
+    expect(onDisk).toMatch(/\[avtc-claude-logger\] 1 line\(s\) previously lost: .*backend not initialized/);
     expect(text(adapter, 0)).toBe("full-old-zombie\n");
   });
 
-  test("write failures never throw; the failed batch is lost, later lines land", async () => {
+  test("write failures never throw; the failed batch is lost, later lines land, and the ring acknowledges the loss", async () => {
     const adapter = new MemoryAdapter();
     adapter.failures = 1;
     const w = makeWriter(adapter);
@@ -175,7 +181,43 @@ describe("SlotRingWriter", () => {
     await flush(w); // swallows the EWRITE (best-effort: the batch is gone)
     await w.writeLine("kept\n", clock());
     await flush(w);
-    expect(text(adapter, 0)).toBe("kept\n");
+    const onDisk = text(adapter, 0) ?? "";
+    expect(onDisk).toContain("kept\n");
+    expect(onDisk).toMatch(/\[avtc-claude-logger\] 1 line\(s\) previously lost: .*EWRITE/);
+  });
+
+  test("a failed wrap write does not wedge the ring — the slot re-resolves, the wrap retries, the loss is acknowledged", async () => {
+    // the wrap shape: slot 0 full, the overflow line must land in slot 1 —
+    // if THAT write fails, the old code cached slot 0 and every later batch
+    // re-wrapped into the same failing write (a silent drop loop). Now the
+    // failure invalidates the slot, the next batch re-resolves fresh and
+    // lands — with the lost lines acknowledged in-ring
+    const adapter = new MemoryAdapter();
+    const w = makeWriter(adapter, { maxFileBytes: 1000, slotCount: 2 });
+    const a = `${"a".repeat(599)}\n`;
+    const b = `${"b".repeat(599)}\n`;
+    const c = `${"c".repeat(599)}\n`;
+    await w.writeLine(a, clock());
+    await flush(w); // slot 0 = a (600 B)
+    const realWrite = adapter.write.bind(adapter);
+    let slot1Fails = 1;
+    adapter.write = async (p: string, t: string): Promise<void> => {
+      if (p.endsWith("/1.log") && slot1Fails > 0) {
+        slot1Fails -= 1;
+        throw new Error(`EWRITE: ${p}`);
+      }
+      return realWrite(p, t);
+    };
+    await w.writeLine(b, clock());
+    await flush(w); // wrap: slot 0 flushed, the slot-1 write throws → batch lost
+    expect(text(adapter, 1)).toBeNull();
+    await w.writeLine(c, clock());
+    await flush(w); // re-resolved (fresh list), wrapped again, landed in slot 1
+    expect(adapter.listCalls).toBeGreaterThanOrEqual(2);
+    expect(text(adapter, 1)).toBe(c);
+    const head = text(adapter, 0) ?? "";
+    expect(head).toContain(a);
+    expect(head).toMatch(/\[avtc-claude-logger\] 1 line\(s\) previously lost: .*EWRITE.*1\.log/);
   });
 
   test("concurrent writeLine calls coalesce into one flush, order preserved", async () => {
